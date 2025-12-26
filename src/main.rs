@@ -4,10 +4,36 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Error;
     use std::time::Duration;
-    use sqlx::{Connection, PgConnection, PgPool, Postgres, Row};
+    use futures::TryStreamExt;
+    use sqlx::{Connection, PgConnection, PgPool, Row};
     use sqlx::postgres::{PgPoolOptions, PgRow};
+
+
+
+    #[derive(Debug)]
+    struct Category {
+        id : String,
+        name: String,
+        description: String,
+    }
+
+    #[tokio::test]
+    async fn test_fetch() ->  Result<(), sqlx::Error>{
+        let pool = get_pool().await?;
+
+        let mut result = sqlx::query("select * from category")
+            .fetch(&pool);
+
+        while let Some(row) = result.try_next().await? {
+            let id: String = row.get("id");
+            let name: String = row.get("name");
+            let description: String = row.get("description");
+            println!("id : {}, name : {}, description : {}", id, name, description);
+        }
+
+        Ok(())
+    }
 
 
     #[tokio::test]
@@ -26,7 +52,7 @@ mod tests {
         Ok(())
 
     }
-    
+
     #[tokio::test]
     async fn test_fetch_optional() -> Result<(), sqlx::Error> {
         let pool = get_pool().await?;
