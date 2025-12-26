@@ -6,12 +6,165 @@ fn main() {
 mod tests {
     use std::time::Duration;
     use futures::TryStreamExt;
-    use sqlx::{Connection, PgConnection, PgPool, Row};
+    use sqlx::{Connection, Error, PgConnection, PgPool, Pool, Postgres, Row};
     use sqlx::postgres::{PgPoolOptions, PgRow};
+    use sqlx::FromRow;
+    use chrono::{Local, NaiveDateTime};
+
+    #[tokio::test]
+    async fn test_auto_increment_with_transaction() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+        let mut transaction = pool.begin().await?;
+
+        sqlx::query("insert into sellers(name) values ($1) returning id;")
+            .bind("Contoh Seller")
+            .execute(&mut *transaction).await?;
+
+        let result: PgRow = sqlx::query("select lastval() as id")
+            .fetch_one(&mut *transaction).await?;
+
+        transaction.commit().await?;
+
+        let id: i32 = result.get_unchecked("id");
+        println!("Id Seller : {}", id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_auto_increment() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+
+        let result : PgRow = sqlx::query("insert into  sellers(name) values ($1) returning id;")
+            .bind("Contoh seller")
+            .fetch_one(&pool).await?;
+
+        let id: i32 = result.get("id");
+        println!("Id Seller : {}", id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_transaction() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+        let mut transaction = pool.begin().await?;
+
+
+        sqlx::query("insert into brands (id, name, description, created_at, updated_at) values ($1, $2, $3, $4, $5);")
+            .bind("B")
+            .bind("Contoh Name B")
+            .bind("Contoh Description B")
+            .bind(Local::now().naive_local())
+            .bind(Local::now().naive_local())
+            .execute(&mut *transaction).await?;
+
+
+        sqlx::query("insert into brands (id, name, description, created_at, updated_at) values ($1, $2, $3, $4, $5);")
+            .bind("D")
+            .bind("Contoh Name D")
+            .bind("Contoh Description D")
+            .bind(Local::now().naive_local())
+            .bind(Local::now().naive_local())
+            .execute(&mut *transaction).await?;
+
+
+        sqlx::query("insert into brands (id, name, description, created_at, updated_at) values ($1, $2, $3, $4, $5);")
+            .bind("C")
+            .bind("Contoh Name C")
+            .bind("Contoh Description C")
+            .bind(Local::now().naive_local())
+            .bind(Local::now().naive_local())
+            .execute(&mut *transaction).await?;
+
+        transaction.commit().await?;
+        Ok(())
+    }
 
 
 
-    #[derive(Debug)]
+    #[tokio::test]
+    async fn test_result_mapping_brand() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+
+        let result : Vec<Brand> = sqlx::query_as("select * from brands")
+            .fetch_all(&pool).await?;
+
+        for brand in result {
+            println!("{:?}", brand);
+        }
+
+        Ok(())
+    }
+
+
+
+
+
+    #[tokio::test]
+    async fn test_insert_brand() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+
+        sqlx::query("insert into brands (id, name, description, created_at, updated_at) values ($1, $2, $3, $4, $5);")
+            .bind("a")
+            .bind("Contoh Name")
+            .bind("Contoh Description")
+            .bind(Local::now().naive_local())
+            .bind(Local::now().naive_local())
+            .execute(&pool).await?;
+        Ok(())
+    }
+
+
+    #[derive(FromRow, Debug)]
+    struct Brand {
+        id: String,
+        name: String,
+        description: String,
+        created_at: NaiveDateTime,
+        updated_at: NaiveDateTime,
+    }
+
+
+    #[tokio::test]
+    async fn test_result_mapping_automatic() -> Result<(), sqlx::Error> {
+        let pool = get_pool().await?;
+
+        let result: Vec<Category> = sqlx::query_as("select * from category")
+            .fetch_all(&pool).await?;
+
+        for category in result {
+            println!("{:?}", category);
+        }
+
+        Ok(())
+    }
+
+
+
+    #[tokio::test]
+    async fn test_result_mapping() ->  Result<(), sqlx::Error>{
+        let pool = get_pool().await?;
+
+        let mut result = sqlx::query("select * from category")
+            .map(|row: PgRow| {
+                Category {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    description: row.get("description"),
+                }
+            })
+            .fetch_all(&pool).await?;
+
+        for category in result  {
+            println!("{:#?}", category);
+        }
+        Ok(())
+    }
+
+
+
+    #[derive(Debug, FromRow)]
     struct Category {
         id : String,
         name: String,
